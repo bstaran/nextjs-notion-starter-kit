@@ -1,5 +1,7 @@
-import { ExtendedRecordMap, SearchParams, SearchResults } from 'notion-types'
+import { ExtendedRecordMap, SearchParams, SearchResults, CollectionViewBlock } from 'notion-types'
 import { mergeRecordMaps } from 'notion-utils'
+import { environment } from './config'
+import { db } from './db'
 import pMap from 'p-map'
 import pMemoize from 'p-memoize'
 
@@ -65,4 +67,38 @@ export async function getPage(pageId: string): Promise<ExtendedRecordMap> {
 
 export async function search(params: SearchParams): Promise<SearchResults> {
   return notion.search(params)
+}
+
+export async function getRootDatabase(domain: string, rootPageId: string): Promise<ExtendedRecordMap> {
+  const recordMap = await notion.getPage(rootPageId);
+  const databaseBlockEntry = Object.values(recordMap.block).find(
+    (block) => block.value.type === 'collection_view'
+  );
+
+  if (!databaseBlockEntry) {
+    throw new Error('No database found on the root page');
+  }
+
+  const databaseBlock = databaseBlockEntry.value as CollectionViewBlock;
+  const collectionId = databaseBlock.id;
+  const collectionViewId = databaseBlock.view_ids[0];
+  const collectionData = await notion.getCollectionData(
+    collectionId,
+    collectionViewId,
+    {
+      'gallery_view': true,
+    }
+  );
+
+  // ExtendedRecordMap type conversion
+  const extendedRecordMap: ExtendedRecordMap = {
+    block: recordMap.block,
+    collection: collectionData.recordMap.collection,
+    collection_view: collectionData.recordMap.collection_view,
+    notion_user: recordMap.notion_user,
+    collection_query: recordMap.collection_query,
+    signed_urls: recordMap.signed_urls,
+  };
+
+  return extendedRecordMap;
 }

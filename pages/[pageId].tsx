@@ -2,10 +2,12 @@ import * as React from 'react'
 import { GetStaticProps } from 'next'
 
 import { NotionPage } from '@/components/NotionPage'
-import { domain, isDev } from '@/lib/config'
+import { domain, isDev, rootNotionPageId } from '@/lib/config'
 import { getSiteMap } from '@/lib/get-site-map'
 import { resolveNotionPage } from '@/lib/resolve-notion-page'
+import { getRootDatabase } from '@/lib/notion'
 import { PageProps, Params } from '@/lib/types'
+
 
 export const getStaticProps: GetStaticProps<PageProps, Params> = async (
   context
@@ -15,7 +17,8 @@ export const getStaticProps: GetStaticProps<PageProps, Params> = async (
   try {
     const props = await resolveNotionPage(domain, rawPageId)
 
-    return { props, revalidate: 10 }
+    const rootDatabase = await getRootDatabase(domain, rootNotionPageId)
+    return { props: { ...props, rootDatabase }, revalidate: 10 }
   } catch (err) {
     console.error('page error', domain, rawPageId, err)
 

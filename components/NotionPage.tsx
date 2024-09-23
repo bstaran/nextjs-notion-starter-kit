@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 import cs from 'classnames'
-import { PageBlock } from 'notion-types'
+import { PageBlock, ExtendedRecordMap } from 'notion-types'
 import { formatDate, getBlockTitle, getPageProperty } from 'notion-utils'
 import BodyClassName from 'react-body-classname'
 import { NotionRenderer } from 'react-notion-x'
@@ -142,14 +142,50 @@ const propertyTextValue = (
   return defaultFn()
 }
 
+const getBlock = (recordMap: ExtendedRecordMap) => {
+  const keys = Object.keys(recordMap?.block || {})
+  const block = recordMap?.block?.[keys[0]]?.value
+  return block
+}
+
+const getTitle = (block: types.Block, recordMap: ExtendedRecordMap, site: types.Site) => {
+  const title = getBlockTitle(block, recordMap) || site.name
+  return title
+}
+
 export const NotionPage: React.FC<types.PageProps> = ({
   site,
   recordMap,
   error,
-  pageId
+  pageId,
+  rootDatabase
 }) => {
   const router = useRouter()
   const lite = useSearchParam('lite')
+
+  const block = getBlock(recordMap)
+  const title = getTitle(block, recordMap, site)
+
+  const filteredDatabase = React.useMemo(() => {
+    const currentPageTitle = title.toLowerCase()
+    const filteredBlocks = Object.values(rootDatabase.block).filter((block) => {
+      if (!block || !block.value || !block.value.properties) {
+        console.warn('블록이 불완전합니다:', block)
+        return false // block, value, properties가 정의되지 않은 경우 필터링에서 제외
+      }
+      const properties = block.value.properties
+      const category = properties?.Category?.[0]?.[0]?.toLowerCase()
+      return category === currentPageTitle
+    })
+
+    // 필터링된 블록을 ExtendedRecordMap 형식으로 변환
+    const filteredRecordMap: ExtendedRecordMap = {
+      ...rootDatabase,
+      block: Object.fromEntries(filteredBlocks.map(block => [block.value.id, block]))
+    }
+
+    return filteredRecordMap
+  }, [rootDatabase, title])
 
   const components = React.useMemo(
     () => ({
@@ -182,9 +218,6 @@ export const NotionPage: React.FC<types.PageProps> = ({
     return mapPageUrl(site, recordMap, searchParams)
   }, [site, recordMap, lite])
 
-  const keys = Object.keys(recordMap?.block || {})
-  const block = recordMap?.block?.[keys[0]]?.value
-
   // const isRootPage =
   //   parsePageId(block?.id) === parsePageId(site?.rootNotionPageId)
   const isBlogPost =
@@ -210,8 +243,6 @@ export const NotionPage: React.FC<types.PageProps> = ({
     return <Page404 site={site} pageId={pageId} error={error} />
   }
 
-  const title = getBlockTitle(block, recordMap) || site.name
-
   console.log('notion page', {
     isDev: config.isDev,
     title,
@@ -219,6 +250,10 @@ export const NotionPage: React.FC<types.PageProps> = ({
     rootNotionPageId: site.rootNotionPageId,
     recordMap
   })
+
+  console.log('site 객체:', site) // 디버깅을 위해 추가
+  console.log('recordMap 객체:', recordMap) // 디버깅을 위해 추가
+  console.log('pageId:', pageId) // 디버깅을 위해 추가
 
   if (!config.isServer) {
     // add important objects to the window global for easy debugging
@@ -280,6 +315,13 @@ export const NotionPage: React.FC<types.PageProps> = ({
         pageAside={pageAside}
         footer={footer}
       />
+
+      {filteredDatabase && (
+        <div>
+          <h2>Related Posts</h2>
+          <NotionRenderer recordMap={filteredDatabase} />
+        </div>
+      )}
 
       <GitHubShareButton />
     </>
